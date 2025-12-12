@@ -31,7 +31,7 @@ func (s *Styles) Style(index int) Style {
 
 func (s *Styles) ApplyCsi(csi ansi.Csi) (int, Style) {
 	index, style := s.Current()
-	style = style.ApplyCsi(csi)
+	style = style.ApplySgr(csi)
 	index = s.Index(style)
 	s.current = index
 	return index, style
