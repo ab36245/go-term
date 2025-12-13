@@ -34,6 +34,17 @@ type Screen struct {
 	scrollBottom int
 }
 
+func (s *Screen) ApplySeq(seq ansi.Sequence) {
+	switch seq := seq.(type) {
+	case ansi.Csi:
+		s.ApplyCsi(seq)
+	case ansi.Ctrl:
+		s.ApplyCtrl(seq)
+	case ansi.Text:
+		s.ApplyText(seq)
+	}
+}
+
 func (s *Screen) ApplyCsi(csi ansi.Csi) {
 	log.Debug().Stringer("csi", csi).Msg("Applying csi")
 	params := csi.Params()
