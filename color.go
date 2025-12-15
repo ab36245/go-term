@@ -48,14 +48,14 @@ func (c Color) Value() int {
 	return int(c.x)
 }
 
-func newColor4(n int) Color {
+func NewColor4(n int) Color {
 	return Color{size: 4, x: byte(n)}
 }
 
-func newColor8(n int) Color {
+func NewColor8(n int) Color {
 	return Color{size: 8, x: byte(n)}
 }
 
-func newColor24(r, g, b int) Color {
+func NewColor24(r, g, b int) Color {
 	return Color{size: 24, x: byte(r), y: byte(g), z: byte(b)}
 }

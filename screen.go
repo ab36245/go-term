@@ -1,6 +1,9 @@
 package term
 
 import (
+	"fmt"
+	"strings"
+
 	"github.com/mattn/go-runewidth"
 	"github.com/rs/zerolog/log"
 
@@ -11,9 +14,8 @@ func New(width, height int) *Screen {
 	s := &Screen{
 		height:       height,
 		width:        width,
-		cells:        nil,
-		styles:       newStyles(),
-		top:          0,
+		buffer:       NewBuffer(width, height),
+		styles:       NewStyles(),
 		row:          0,
 		col:          0,
 		scrollTop:    0,
@@ -25,9 +27,8 @@ func New(width, height int) *Screen {
 type Screen struct {
 	height       int
 	width        int
-	cells        [][]Cell
+	buffer       *Buffer
 	styles       *Styles
-	top          int
 	row          int
 	col          int
 	scrollTop    int
@@ -50,75 +51,100 @@ func (s *Screen) ApplyCsi(csi ansi.Csi) {
 	params := csi.Params()
 	switch csi.Action() {
 	case 'A':
+		// Cursor Up (CUU)
 		n := params.Get(1)
-		s.GoToInView(s.row-n, s.col)
+		s.GoTo(s.row-n, s.col)
 
 	case 'B':
+		// Cursor Down (CUD)
 		n := params.Get(1)
-		s.GoToInView(s.row+n, s.col)
+		s.GoTo(s.row+n, s.col)
 
 	case 'C':
+		// Cursor Forward (CUF)
 		n := params.Get(1)
-		s.GoToInView(s.row, s.col-n)
+		s.GoTo(s.row, s.col-n)
 
 	case 'D':
+		// Cursor Backward (CUB)
 		n := params.Get(1)
-		s.GoToInView(s.row, s.col+n)
+		s.GoTo(s.row, s.col+n)
 
 	case 'G':
+		// Cursor Character Absolute (CHA)
 		n := params.Get(1)
 		s.col = n
 
 	case 'H':
+		// Cursor Position (CUP)
 		r := params.Get(1)
 		c := params.Get(1)
-		s.GoToInView(r-1, c-1)
+		s.GoTo(r-1, c-1)
 
 	case 'J':
+		// Erase in Display (ED)
 		n := params.Get(0)
 		switch n {
 		case 0:
-			s.EraseDisplayBelow()
+			s.buffer.ClearRange(s.row, s.col, s.height-1, s.width-1)
 		case 1:
-			s.EraseDisplayAbove()
+			s.buffer.ClearRange(0, 0, s.row, s.col)
 		case 2:
-			s.EraseDisplayAll()
+			s.buffer.ClearAll()
 		}
 
 	case 'K':
+		// Erase in Line (EL)
 		n := params.Get(0)
 		switch n {
 		case 0:
-			s.EraseLineRight()
+			s.buffer.ClearRange(s.row, s.col, s.row, s.width-1)
 		case 1:
-			s.EraseLineLeft()
+			s.buffer.ClearRange(s.row, 0, s.row, s.col)
 		case 2:
-			s.EraseLineAll()
+			s.buffer.ClearRange(s.row, 0, s.row, s.width-1)
 		}
 
 	case 'L':
-		// Insert
+		// Insert Line (IL)
 		// TODO
 
 	case 'M':
+		// Delete Line (DL)
 		n := params.Get(1)
-		s.DeleteRows(n)
+		room := s.scrollBottom - s.row + 1
+		if n > room {
+			n = room
+		}
+		startRow := s.row + n
+		startCol := 0
+		endRow := s.scrollBottom
+		endCol := s.width - 1
+		if startRow <= endRow {
+			toRow := s.row
+			toCol := 0
+			s.buffer.CopyRange(startRow, startCol, endRow, endCol, toRow, toCol)
+		}
+		startRow = endRow - n + 1
+		s.buffer.ClearRange(startRow, startCol, endRow, endCol)
 
 	case 'd':
+		// Line Position Absolute (VPA)
 		n := params.Get(1)
-		s.row = s.top + n - 1
+		s.GoTo(n-1, s.col)
 
 	case 'm':
-		s.styles.ApplyCsi(csi)
+		// Character Attributes (SGR)
+		s.styles.ApplySgr(csi)
 
 	case 'r':
 		t := params.Get(1)
 		b := params.Get(0)
 		if b == 0 {
-			b = s.height - 1
+			b = s.height
 		}
-		s.scrollTop = t
-		s.scrollBottom = b
+		s.scrollTop = t - 1
+		s.scrollBottom = b - 1
 
 	default:
 		log.Warn().Stringer("csi", csi).Msg("unhandled csi")
@@ -131,8 +157,8 @@ func (s *Screen) ApplyCtrl(ctrl ansi.Ctrl) {
 		Msg("ApplyCtrl")
 	switch ctrl {
 	case '\n':
-		s.GoTo(s.row+1, 0)
-		// s.GoTo(s.row, s.width)
+		// s.GoTo(s.row+1, 0)
+		s.GoTo(s.row, s.width)
 	case '\r':
 		s.GoTo(s.row, 0)
 	}
@@ -148,10 +174,9 @@ func (s *Screen) ApplyRune(r rune) {
 		s.row++
 		s.col = 0
 	}
-	s.Ensure(s.row, s.col+width-1)
-	s.cells[s.row][s.col] = Cell{r, s.styles.current}
+	s.buffer.AssignCell(s.row, s.col, r, s.styles.current)
 	for i := 1; i < width; i++ {
-		s.cells[s.row][s.col+i] = Cell{0, s.styles.current}
+		s.buffer.AssignCell(s.row, s.col, 0, s.styles.current)
 	}
 	s.col += width
 }
@@ -168,69 +193,11 @@ func (s *Screen) ApplyText(text ansi.Text) {
 	}
 }
 
-func (s *Screen) DeleteRows(n int) {
-	if s.row < s.scrollTop {
-		return
-	}
-	if s.row > s.scrollBottom {
-		return
-	}
-	n = min(n, s.scrollBottom-s.row+1)
-	for r := s.row; r <= s.scrollBottom; r++ {
-		if r >= len(s.cells) {
-			break
-		}
-		if r+n <= s.scrollBottom {
-			s.cells[r] = s.cells[r+n]
-		} else {
-			s.cells[r] = nil
-		}
-	}
-}
-
-func (s *Screen) EraseDisplayAbove() {
-	log.Warn().Str("err", "not implemented").Msg("EraseDisplayAbove")
-}
-
-func (s *Screen) EraseDisplayAll() {
-	s.cells = nil
-}
-
-func (s *Screen) EraseDisplayBelow() {
-	// log.Warn().Str("err", "not implemented").Msg("EraseDisplayBelow")
-	if s.row < len(s.cells) && s.cells[s.row] != nil {
-		s.cells[s.row] = s.cells[s.row][:s.col]
-	}
-	for i := s.row + 1; i < s.top+s.height; i++ {
-		if i < len(s.cells) {
-			s.cells[i] = nil
-		}
-	}
-}
-
-func (s *Screen) EraseLineAll() {
-	s.cells[s.row] = nil
-}
-
-func (s *Screen) EraseLineLeft() {
-	for col := range s.col {
-		if col < len(s.cells[s.row]) {
-			s.cells[s.row][col] = Cell{' ', 0}
-		}
-	}
-}
-
-func (s *Screen) EraseLineRight() {
-	s.cells[s.row] = s.cells[s.row][:s.col]
-}
-
 func (s *Screen) GoTo(row, col int) {
-	min := row - s.height + 1
-	max := row
-	if s.top < min {
-		s.top = min
-	} else if s.top > max {
-		s.top = row
+	if row < 0 {
+		row = 0
+	} else if row >= s.height {
+		row = s.height - 1
 	}
 	s.row = row
 
@@ -240,41 +207,50 @@ func (s *Screen) GoTo(row, col int) {
 		col = s.width - 1
 	}
 	s.col = col
-	s.Ensure(s.row, s.col)
 }
 
-func (s *Screen) GoToInView(row, col int) {
-	if row < s.top {
-		row = s.top
-	} else if row >= s.top+s.height {
-		row = s.top + s.height - 1
-	}
-	// col is checked in GoTo
-	s.GoTo(row, col)
-}
+func (s *Screen) Dump() string {
+	lines := []string{}
 
-func (s *Screen) Ensure(row, col int) {
-	for len(s.cells) <= row {
-		s.cells = append(s.cells, nil)
+	add := func(mesg string, args ...any) {
+		lines = append(lines, fmt.Sprintf(mesg, args...))
 	}
-	for len(s.cells[row]) <= col {
-		s.cells[row] = append(s.cells[row], Cell{' ', 0})
-	}
-}
 
-func (s *Screen) View() string {
-	str := ""
-	curStyle := -1
-	for row := s.top; row < min(len(s.cells), s.top+s.height); row++ {
-		for _, cell := range s.cells[row] {
-			if curStyle != cell.style {
-				str += "\x1b[0m"
-				str += s.styles.Style(cell.style).Esc()
-				curStyle = cell.style
-			}
-			str += string(cell.value)
+	{
+		head := fmt.Sprintf("%T", *s)
+		head += fmt.Sprintf(" (%d x %d)", s.height, s.width)
+		head += fmt.Sprintf(" pos (%d, %d)", s.row, s.col)
+		if s.scrollTop != 0 || s.scrollBottom != s.height-1 {
+			head += fmt.Sprintf(" window %d-%d", s.scrollTop, s.scrollBottom)
 		}
-		str += "\n"
+		add(head)
 	}
-	return str
+
+	{
+		add("  styles")
+		for i, s := range s.styles.byIndex {
+			add("    %2d %s", i, s)
+		}
+	}
+
+	{
+		add("  buffer")
+		i := 0
+		for r := range s.height {
+			str := fmt.Sprintf("    %2d", r)
+			for range s.width {
+				c := s.buffer.cells[i]
+				i++
+				str += fmt.Sprintf(" %2c[%02d]", c.value, c.style)
+			}
+			add(str)
+		}
+	}
+
+	return strings.Join(lines, "\n")
+
+}
+
+func (s *Screen) View() []string {
+	return s.buffer.View(s.styles)
 }

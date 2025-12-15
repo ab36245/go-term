@@ -2,6 +2,17 @@ package term
 
 import "github.com/ab36245/go-ansi"
 
+func NewStyles() *Styles {
+	style := Style{}
+	byIndex := []Style{style}
+	byStyle := map[Style]int{style: 0}
+	return &Styles{
+		byIndex: byIndex,
+		byStyle: byStyle,
+		current: 0,
+	}
+}
+
 type Styles struct {
 	byIndex []Style
 	byStyle map[Style]int
@@ -29,21 +40,10 @@ func (s *Styles) Style(index int) Style {
 	return Style{}
 }
 
-func (s *Styles) ApplyCsi(csi ansi.Csi) (int, Style) {
+func (s *Styles) ApplySgr(csi ansi.Csi) (int, Style) {
 	index, style := s.Current()
 	style = style.ApplySgr(csi)
 	index = s.Index(style)
 	s.current = index
 	return index, style
-}
-
-func newStyles() *Styles {
-	style := Style{}
-	byIndex := []Style{style}
-	byStyle := map[Style]int{style: 0}
-	return &Styles{
-		byIndex: byIndex,
-		byStyle: byStyle,
-		current: 0,
-	}
 }

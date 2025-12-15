@@ -147,17 +147,17 @@ func (s Style) ApplySgr(sgr ansi.Csi) Style {
 			new.Flags &= ^sfCrossedOut
 
 		case n >= 30 && n <= 37:
-			new.Fg = newColor4(n - 30)
+			new.Fg = NewColor4(n - 30)
 		case n == 38:
 			switch n := params.Get(0); n {
 			case 2:
 				r := params.Get(0)
 				g := params.Get(0)
 				b := params.Get(0)
-				new.Fg = newColor24(r, g, b)
+				new.Fg = NewColor24(r, g, b)
 			case 5:
 				v := params.Get(0)
-				new.Fg = newColor8(v)
+				new.Fg = NewColor8(v)
 			default:
 				// TODO log warning?
 			}
@@ -165,17 +165,17 @@ func (s Style) ApplySgr(sgr ansi.Csi) Style {
 			new.Fg = Color{}
 
 		case n >= 40 && n <= 47:
-			new.Bg = newColor4(n - 40)
+			new.Bg = NewColor4(n - 40)
 		case n == 48:
 			switch n := params.Get(0); n {
 			case 2:
 				r := params.Get(0)
 				g := params.Get(0)
 				b := params.Get(0)
-				new.Bg = newColor24(r, g, b)
+				new.Bg = NewColor24(r, g, b)
 			case 5:
 				v := params.Get(0)
-				new.Bg = newColor8(v)
+				new.Bg = NewColor8(v)
 			default:
 				// TODO log warning?
 			}
