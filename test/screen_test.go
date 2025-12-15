@@ -3,9 +3,6 @@ package test
 import (
 	"strings"
 	"testing"
-
-	"github.com/ab36245/go-ansi"
-	"github.com/ab36245/go-term"
 )
 
 func TestScreenEmpty(t *testing.T) {
@@ -138,41 +135,4 @@ func TestScreenOther(t *testing.T) {
 		|     3   [00]   [00]   [00]   [00]   [00]   [00]   [00]   [00]   [00]   [00]
 		|     4   [00]   [00]   [00]   [00]   [00]   [00]   [00]   [00]   [00]   [00]
 	`)
-}
-
-func screenCheck(t *testing.T, a, e string) {
-	indent := "  "
-	e = addBorder(stripBorder(e), indent)
-	a = addBorder(a, indent)
-	if a != e {
-		s := "\n"
-		s += "expected:\n"
-		s += e
-		s += "\n"
-		s += "actual:\n"
-		s += a
-		t.Fatalf("%s", s)
-	}
-}
-
-func screenInput(screen *term.Screen, input string) string {
-	reader := strings.NewReader(input)
-	parser := ansi.NewParser(reader, nil)
-LOOP:
-	for {
-		seq := parser.Next()
-		switch seq.(type) {
-		case ansi.EOF, ansi.Err:
-			break LOOP
-		default:
-			screen.ApplySeq(seq)
-		}
-	}
-	return screen.Dump()
-}
-
-func screenMake(width, height int) *term.Screen {
-	screen := term.New(width, height)
-	// TODO
-	return screen
 }

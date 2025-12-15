@@ -1,38 +1,50 @@
 package test
 
 import (
-	"fmt"
 	"regexp"
 	"strings"
 	"testing"
 	"unicode"
+
+	"github.com/ab36245/go-ansi"
+	"github.com/ab36245/go-term"
 )
 
-func report(t *testing.T, name string, a, e any) {
-	value := func(v any) string {
-		switch v := v.(type) {
-		case string:
-			return fmt.Sprintf("%q", v)
+func screenCheck(t *testing.T, a, e string) {
+	indent := "  "
+	e = addBorder(stripBorder(e), indent)
+	a = addBorder(a, indent)
+	if a != e {
+		s := "\n"
+		s += "expected:\n"
+		s += e
+		s += "\n"
+		s += "actual:\n"
+		s += a
+		t.Fatalf("%s", s)
+	}
+}
+
+func screenInput(screen *term.Screen, input string) string {
+	reader := strings.NewReader(input)
+	parser := ansi.NewParser(reader, nil)
+LOOP:
+	for {
+		seq := parser.Next()
+		switch seq.(type) {
+		case ansi.EOF, ansi.Err:
+			break LOOP
 		default:
-			return fmt.Sprintf("%v", v)
+			screen.ApplySeq(seq)
 		}
 	}
+	return screen.Dump()
+}
 
-	s := "\n"
-	s += "expected:"
-	if name != "" {
-		s += " " + name
-	}
-	s += " " + value(e)
-
-	s += "\n"
-	s += "actual  :"
-	if name != "" {
-		s += " " + name
-	}
-	s += " " + value(a)
-
-	t.Fatal(s)
+func screenMake(width, height int) *term.Screen {
+	screen := term.New(width, height)
+	// TODO
+	return screen
 }
 
 const borderMark = "|"
