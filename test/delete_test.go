@@ -63,3 +63,33 @@ func TestDelete(t *testing.T) {
         |     4   [00]   [00]   [00]   [00]   [00]   [00]   [00]   [00]   [00]   [00]
 	`)
 }
+
+func TestDeleteScroll(t *testing.T) {
+	log.Logger = log.Logger.Level(zerolog.WarnLevel)
+
+	run := func(name string, p string, e string) {
+		t.Run(name, func(t *testing.T) {
+			screen := screenMake(10, 5)
+			builder := strings.Builder{}
+			builder.WriteString("\x1b[2;4r")
+			builder.WriteString("0 つのだ☆HI")
+			builder.WriteString("1 abcdefgh")
+			builder.WriteString("2 lmnopqrs")
+			builder.WriteString("3 01234567")
+			builder.WriteString("4 ABCDEFGH")
+			builder.WriteString("\x1b[3;5H")
+			builder.WriteString("\x1b[" + p + "M")
+			a := screenInput(screen, builder.String())
+			screenCheck(t, a, e)
+		})
+	}
+
+	run("one", "", `
+	`)
+
+	run("three", "3", `
+	`)
+
+	run("nine", "9", `
+	`)
+}

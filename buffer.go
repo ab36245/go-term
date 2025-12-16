@@ -89,11 +89,13 @@ func (b *Buffer) View(styles *Styles) []string {
 		for range b.width {
 			cell := b.cells[index]
 			index++
-			if style != cell.style {
-				line += styles.Style(cell.style).Esc()
-				style = cell.style
+			if cell.value != 0 {
+				if style != cell.style {
+					line += styles.Style(cell.style).Esc()
+					style = cell.style
+				}
+				line += string(cell.value)
 			}
-			line += string(cell.value)
 		}
 		if style != 0 {
 			line += styles.Style(0).Esc()
